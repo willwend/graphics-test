@@ -2,22 +2,38 @@
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
+#include <SOIL/src/SOIL.h>
 
 const GLchar* vertexSource = R"glsl(
     #version 150 core
+
     in vec2 position;
+    in float color;
+    out float Color;
+    
     void main()
     {
-        gl_Position = vec4(position, 0.0, 1.0);
+        Color = color;
+        gl_Position = vec4(position.x, -position.y, 0.0, 1.0);
     }
 )glsl";
 
 const GLchar* fragmentSource = R"glsl(
     #version 150 core
+
+    in float Color;
+    uniform vec3 triangleColor;
+
     out vec4 outColor;
+
     void main()
     {
-        outColor = vec4(1.0, 1.0, 1.0, 1.0);
+        if (Color > 0.8) {
+            outColor = vec4(triangleColor * (Color - 0.8) / 0.2, 1.0);
+        }
+        else {
+            outColor = vec4(Color, Color, Color, 1.0);
+        }
     }
 )glsl";
 
@@ -33,10 +49,14 @@ int main(int argc, char *argv[]) {
     glewInit();
     SDL_Event windowEvent;
 
-    float vertices[] = {
-     0.5f,  0.5f, // Vertex 1 (X, Y)
-     0.5f, -0.5f, // Vertex 2 (X, Y)
-    -0.5f, -0.5f  // Vertex 3 (X, Y)
+    GLfloat vertices[] = {
+         0.0f,  0.5f, 0.0f,
+         0.5f, -0.5f, 0.5f,
+        -0.5f, -0.5f, 1.0f
+    };
+
+    GLuint elements[] = {
+    0, 1, 2
     };
 
     GLuint vao;
@@ -45,9 +65,13 @@ int main(int argc, char *argv[]) {
 
     GLuint vbo;
     glGenBuffers(1, &vbo); // Generate 1 buffer
-    printf("Buffer status: %u\n", vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    GLuint ebo;
+    glGenBuffers(1, &ebo); // Create an element array
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(elements), elements, GL_STATIC_DRAW);
 
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertexSource, NULL);
@@ -85,9 +109,40 @@ int main(int argc, char *argv[]) {
     glLinkProgram(shaderProgram);
     glUseProgram(shaderProgram);
 
-    GLint posAttrib = glGetAttribLocation(shaderProgram, "position"); // ref to input
+    GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
     glEnableVertexAttribArray(posAttrib);
-    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 0, 0); // how to retrieve
+    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE,
+                           3*sizeof(GLfloat), 0);
+
+    GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
+    glEnableVertexAttribArray(colAttrib);
+    glVertexAttribPointer(colAttrib, 1, GL_FLOAT, GL_FALSE,
+                           3*sizeof(GLfloat), (void*)(2*sizeof(GLfloat)));
+
+    GLint uniColor = glGetUniformLocation(shaderProgram, "triangleColor");
+    glUniform3f(uniColor, 0.6f, 0.8f, 1.0f);
+
+    // Black/white checkerboard
+    float pixels[] = {
+        0.0f, 0.0f, 0.0f,   1.0f, 1.0f, 1.0f,
+        1.0f, 1.0f, 1.0f,   0.0f, 0.0f, 0.0f
+    };
+
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    //float color[] = { 1.0f, 0.0f, 0.0f, 1.0f };
+    //glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
+    int width, height;
+    unsigned char* image = SOIL_load_image("SOIL/img_test.png", &width, &height, 0, SOIL_LOAD_RGB);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    SOIL_free_image_data(image);
 
     while (true) {
         if (SDL_PollEvent(&windowEvent)) {
@@ -96,7 +151,7 @@ int main(int argc, char *argv[]) {
         }
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Clear the screen to black
         glClear(GL_COLOR_BUFFER_BIT);
-        glDrawArrays(GL_TRIANGLES, 0, 3); // Draw a triangle from the 3 vertices
+        glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, 0);
         SDL_GL_SwapWindow(window);
     }
 
