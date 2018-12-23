@@ -2,38 +2,39 @@
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
-#include <SOIL/src/SOIL.h>
+#include "SOIL/src/SOIL.h"
 
 const GLchar* vertexSource = R"glsl(
     #version 150 core
 
     in vec2 position;
-    in float color;
-    out float Color;
-    
+    in vec3 color;
+    in vec2 texcoord;
+
+    out vec3 Color;
+    out vec2 Texcoord;
+
     void main()
     {
         Color = color;
-        gl_Position = vec4(position.x, -position.y, 0.0, 1.0);
+        Texcoord = texcoord;
+        gl_Position = vec4(position, 0.0, 1.0);
     }
 )glsl";
 
 const GLchar* fragmentSource = R"glsl(
     #version 150 core
-
-    in float Color;
-    uniform vec3 triangleColor;
-
+    
+    in vec3 Color;
+    in vec2 Texcoord;
+    
     out vec4 outColor;
-
+    
+    uniform sampler2D tex;
+    
     void main()
     {
-        if (Color > 0.8) {
-            outColor = vec4(triangleColor * (Color - 0.8) / 0.2, 1.0);
-        }
-        else {
-            outColor = vec4(Color, Color, Color, 1.0);
-        }
+        outColor = texture(tex, Texcoord) * vec4(Color, 1.0);
     }
 )glsl";
 
@@ -50,13 +51,16 @@ int main(int argc, char *argv[]) {
     SDL_Event windowEvent;
 
     GLfloat vertices[] = {
-         0.0f,  0.5f, 0.0f,
-         0.5f, -0.5f, 0.5f,
-        -0.5f, -0.5f, 1.0f
+    //  Position      Color             Texcoords
+        -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, -3.0f, -3.0f, // Top-left
+         0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 3.0f, -3.0f, // Top-right
+         0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 3.0f, 3.0f, // Bottom-right
+        -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, -3.0f, 3.0f  // Bottom-left
     };
 
     GLuint elements[] = {
-    0, 1, 2
+        0, 1, 2,
+        2, 3, 0
     };
 
     GLuint vao;
@@ -109,40 +113,47 @@ int main(int argc, char *argv[]) {
     glLinkProgram(shaderProgram);
     glUseProgram(shaderProgram);
 
+    // Specify the layout of the vertex data
     GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
     glEnableVertexAttribArray(posAttrib);
-    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE,
-                           3*sizeof(GLfloat), 0);
+    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), 0);
 
     GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
     glEnableVertexAttribArray(colAttrib);
-    glVertexAttribPointer(colAttrib, 1, GL_FLOAT, GL_FALSE,
-                           3*sizeof(GLfloat), (void*)(2*sizeof(GLfloat)));
+    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
 
-    GLint uniColor = glGetUniformLocation(shaderProgram, "triangleColor");
-    glUniform3f(uniColor, 0.6f, 0.8f, 1.0f);
+    GLint texAttrib = glGetAttribLocation(shaderProgram, "texcoord");
+    glEnableVertexAttribArray(texAttrib);
+    glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), (void*)(5 * sizeof(GLfloat)));
 
-    // Black/white checkerboard
-    float pixels[] = {
-        0.0f, 0.0f, 0.0f,   1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f,   0.0f, 0.0f, 0.0f
-    };
-
+    // Load texture
     GLuint tex;
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    //float color[] = { 1.0f, 0.0f, 0.0f, 1.0f };
-    //glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
+
     int width, height;
     unsigned char* image = SOIL_load_image("SOIL/img_test.png", &width, &height, 0, SOIL_LOAD_RGB);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
-    glGenerateMipmap(GL_TEXTURE_2D);
     SOIL_free_image_data(image);
+
+    //GLint uniColor = glGetUniformLocation(shaderProgram, "triangleColor");
+    //glUniform3f(uniColor, 0.6f, 0.8f, 1.0f);
+
+    // Black/white checkerboard
+    /*float pixels[] = {
+        0.8f, 0.0f, 0.0f,   0.9f, 0.9f, 0.0f,
+        0.0f, 0.6f, 0.9f,   0.0f, 0.8f, 0.0f
+    };*/
+
+    //float color[] = { 1.0f, 0.0f, 0.0f, 1.0f };
+    //glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
+    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
+    //glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     while (true) {
         if (SDL_PollEvent(&windowEvent)) {
@@ -151,7 +162,7 @@ int main(int argc, char *argv[]) {
         }
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Clear the screen to black
         glClear(GL_COLOR_BUFFER_BIT);
-        glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // Draw rectangle
         SDL_GL_SwapWindow(window);
     }
 

@@ -12,7 +12,7 @@ LIBDIR = ../../lib
 INCDIR = ../../src
 OBJDIR = obj
 
-CXX = gcc
+CXX = gcc '-arch 1386 -arch x86_64'
 CXXFLAGS = -O2 -s -Wall
 DELETER = rm -f
 COPIER = cp
