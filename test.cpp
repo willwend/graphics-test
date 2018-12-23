@@ -3,22 +3,32 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
 #include "SOIL/src/SOIL.h"
+#include "GLM/glm/glm.hpp"
+#include "GLM/glm/gtc/matrix_transform.hpp"
+#include "GLM/glm/gtc/type_ptr.hpp"
+#include <chrono>
 
 const GLchar* vertexSource = R"glsl(
     #version 150 core
 
     in vec2 position;
     in vec3 color;
-    in vec2 texcoord;
+    in vec2 texcoordone;
+    in vec2 texcoordtwo;
 
     out vec3 Color;
-    out vec2 Texcoord;
+    out vec2 Texcoordone;
+    out vec2 Texcoordtwo;
+
+    uniform mat4 trans;
 
     void main()
     {
         Color = color;
-        Texcoord = texcoord;
-        gl_Position = vec4(position, 0.0, 1.0);
+        Texcoordone = texcoordone;
+        vec4 temp = trans * trans * trans * vec4(texcoordtwo, 0.0, 1.0);
+        Texcoordtwo = vec2(temp.x, temp.y);
+        gl_Position = trans * vec4(position, 0.0, 1.0);
     }
 )glsl";
 
@@ -26,15 +36,17 @@ const GLchar* fragmentSource = R"glsl(
     #version 150 core
     
     in vec3 Color;
-    in vec2 Texcoord;
+    in vec2 Texcoordone;
+    in vec2 Texcoordtwo;
     
     out vec4 outColor;
     
-    uniform sampler2D tex;
+    uniform sampler2D texOne;
+    uniform sampler2D texTwo;
     
     void main()
     {
-        outColor = texture(tex, Texcoord) * vec4(Color, 1.0);
+        outColor = mix(texture(texOne, Texcoordone), texture(texTwo, Texcoordtwo), 0.5) * vec4(Color, 1.0);
     }
 )glsl";
 
@@ -52,10 +64,10 @@ int main(int argc, char *argv[]) {
 
     GLfloat vertices[] = {
     //  Position      Color             Texcoords
-        -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, -3.0f, -3.0f, // Top-left
-         0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 3.0f, -3.0f, // Top-right
-         0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 3.0f, 3.0f, // Bottom-right
-        -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, -3.0f, 3.0f  // Bottom-left
+        -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.25f, 0.45f, 0.0f, 0.0f, // Top-left
+         0.5f,  0.5f, 0.7f, 0.7f, 0.7f, 0.55f, 0.25f, 1.0f, 0.0f, // Top-right
+         0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.75f, 0.55f, 1.0f, 1.0f, // Bottom-right
+        -0.5f, -0.5f, 0.5f, 0.5f, 0.5f, 0.45f, 0.75f, 0.0f, 1.0f  // Bottom-left
     };
 
     GLuint elements[] = {
@@ -116,49 +128,70 @@ int main(int argc, char *argv[]) {
     // Specify the layout of the vertex data
     GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
     glEnableVertexAttribArray(posAttrib);
-    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), 0);
+    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 9 * sizeof(GLfloat), 0);
 
     GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
     glEnableVertexAttribArray(colAttrib);
-    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
+    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
 
-    GLint texAttrib = glGetAttribLocation(shaderProgram, "texcoord");
-    glEnableVertexAttribArray(texAttrib);
-    glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(GLfloat), (void*)(5 * sizeof(GLfloat)));
+    GLint texoneAttrib = glGetAttribLocation(shaderProgram, "texcoordone");
+    glEnableVertexAttribArray(texoneAttrib);
+    glVertexAttribPointer(texoneAttrib, 2, GL_FLOAT, GL_FALSE, 9 * sizeof(GLfloat), (void*)(7 * sizeof(GLfloat)));
+
+    GLint textwoAttrib = glGetAttribLocation(shaderProgram, "texcoordtwo");
+    glEnableVertexAttribArray(textwoAttrib);
+    glVertexAttribPointer(textwoAttrib, 2, GL_FLOAT, GL_FALSE, 9 * sizeof(GLfloat), (void*)(5 * sizeof(GLfloat)));
 
     // Load texture
-    GLuint tex;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
+    GLuint textures[2];
+    glGenTextures(2, textures);
 
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textures[0]);
     int width, height;
-    unsigned char* image = SOIL_load_image("SOIL/img_test.png", &width, &height, 0, SOIL_LOAD_RGB);
+    unsigned char* image = SOIL_load_image("SOIL/img_cheryl.jpg", &width, &height, 0, SOIL_LOAD_RGB);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
     SOIL_free_image_data(image);
-
-    //GLint uniColor = glGetUniformLocation(shaderProgram, "triangleColor");
-    //glUniform3f(uniColor, 0.6f, 0.8f, 1.0f);
-
-    // Black/white checkerboard
-    /*float pixels[] = {
-        0.8f, 0.0f, 0.0f,   0.9f, 0.9f, 0.0f,
-        0.0f, 0.6f, 0.9f,   0.0f, 0.8f, 0.0f
-    };*/
-
-    //float color[] = { 1.0f, 0.0f, 0.0f, 1.0f };
-    //glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
-    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
-    //glGenerateMipmap(GL_TEXTURE_2D);
-
+    glUniform1i(glGetUniformLocation(shaderProgram, "texOne"), 0);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+    float pixels[] = {
+        0.8f, 0.0f, 0.0f,   0.9f, 0.9f, 0.0f,
+        0.0f, 0.6f, 0.9f,   0.0f, 0.8f, 0.0f
+    };
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, textures[1]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
+    glUniform1i(glGetUniformLocation(shaderProgram, "texTwo"), 1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    auto t_start = std::chrono::high_resolution_clock::now();
+    glm::mat4 trans = glm::mat4(1.0f);
+    trans = glm::rotate(trans, glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    GLint uniTrans = glGetUniformLocation(shaderProgram, "trans");
+    glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(trans));
+
     while (true) {
         if (SDL_PollEvent(&windowEvent)) {
             if (windowEvent.type == SDL_QUIT) break;
             if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_ESCAPE) break;
+        }
+        auto t_now = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration_cast<std::chrono::duration<float>>(t_now - t_start).count();
+        if (time > 1) {
+            t_start = t_now;
+            trans = glm::rotate(
+                trans,
+                glm::radians(90.0f),
+                glm::vec3(0.0f, 0.0f, 1.0f)
+            );
+            glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(trans));
         }
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Clear the screen to black
         glClear(GL_COLOR_BUFFER_BIT);
