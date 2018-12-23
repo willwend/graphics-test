@@ -20,15 +20,16 @@ const GLchar* vertexSource = R"glsl(
     out vec2 Texcoordone;
     out vec2 Texcoordtwo;
 
-    uniform mat4 trans;
+    uniform mat4 model;
+    uniform mat4 view;
+    uniform mat4 proj;
 
     void main()
     {
         Color = color;
         Texcoordone = texcoordone;
-        vec4 temp = trans * trans * trans * vec4(texcoordtwo, 0.0, 1.0);
-        Texcoordtwo = vec2(temp.x, temp.y);
-        gl_Position = trans * vec4(position, 0.0, 1.0);
+        Texcoordtwo = texcoordtwo;
+        gl_Position = proj * view * model * vec4(position, 0.0, 1.0);
     }
 )glsl";
 
@@ -149,7 +150,7 @@ int main(int argc, char *argv[]) {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, textures[0]);
     int width, height;
-    unsigned char* image = SOIL_load_image("SOIL/img_cheryl.jpg", &width, &height, 0, SOIL_LOAD_RGB);
+    unsigned char* image = SOIL_load_image("SOIL/img_test.png", &width, &height, 0, SOIL_LOAD_RGB);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
     SOIL_free_image_data(image);
     glUniform1i(glGetUniformLocation(shaderProgram, "texOne"), 0);
@@ -172,26 +173,52 @@ int main(int argc, char *argv[]) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     auto t_start = std::chrono::high_resolution_clock::now();
-    glm::mat4 trans = glm::mat4(1.0f);
-    trans = glm::rotate(trans, glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    GLint uniTrans = glGetUniformLocation(shaderProgram, "trans");
-    glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(trans));
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::rotate(model, glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    GLint uniModel = glGetUniformLocation(shaderProgram, "model");
+    glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+
+    glm::mat4 view = glm::lookAt(
+    glm::vec3(2.0f, 3.0f, 5.0f),
+    glm::vec3(0.0f, 0.0f, 0.0f),
+    glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+    GLint uniView = glGetUniformLocation(shaderProgram, "view");
+    glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
+    glm::mat4 proj = glm::perspective(glm::radians(40.0f), 800.0f / 600.0f, 1.0f, 30.0f);
+    GLint uniProj = glGetUniformLocation(shaderProgram, "proj");
+    glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
+    float sint = 1.6f;
+    bool flip = false;
+    //GLfloat angle = -45.0f;
+    //GLfloat speed = 0.0f;
 
     while (true) {
         if (SDL_PollEvent(&windowEvent)) {
             if (windowEvent.type == SDL_QUIT) break;
-            if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_ESCAPE) break;
+            if (windowEvent.type == SDL_KEYUP) {
+                if (windowEvent.key.keysym.sym == SDLK_ESCAPE) break;
+                if (windowEvent.key.keysym.sym == SDLK_SPACE) flip = !flip;
+            }
         }
         auto t_now = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration_cast<std::chrono::duration<float>>(t_now - t_start).count();
-        if (time > 1) {
+        if (time > 0.015f) {
+            sint += time;
             t_start = t_now;
-            trans = glm::rotate(
-                trans,
-                glm::radians(90.0f),
-                glm::vec3(0.0f, 0.0f, 1.0f)
+            float scaling = sin(sint) * 0.01f + 1.0f;
+            if (flip) {
+                model = glm::rotate(
+                    model,
+                    glm::radians(1.0f),
+                    glm::vec3(1.0f, 0.0f, 0.0f)
+                );
+            }
+            model = glm::scale(
+                model,
+                glm::vec3(scaling, scaling, scaling)
             );
-            glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(trans));
+            glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
         }
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Clear the screen to black
         glClear(GL_COLOR_BUFFER_BIT);
