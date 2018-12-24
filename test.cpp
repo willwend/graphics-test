@@ -28,8 +28,8 @@ const GLchar* vertexSource = R"glsl(
 const GLchar* geometrySource = R"glsl(
     #version 150 core
     
-    layout(lines) in;
-    layout(triangle_strip, max_vertices = 128) out;
+    layout(points) in;
+    layout(triangle_strip, max_vertices = 66) out;
 
     in vec3 vColor[];
     in float vSides[];
@@ -39,26 +39,24 @@ const GLchar* geometrySource = R"glsl(
     
     void main()
     {
-        for (int j = 0; j < 2; j++) {
-            fColor = vColor[j];
+        fColor = vColor[0];
 
-            for (int i = 0; i <= vSides[j]; i++) {
-                // Angle between each side in radians
-                float ang = PI * 2.0 / vSides[j] * i;
-        
-                // Offset from center of point (0.3 to accomodate for aspect ratio)
-                vec4 offset = vec4(cos(ang) * 0.3, -sin(ang) * 0.4, 0.0, 0.0);
-                gl_Position = gl_in[j].gl_Position + offset;
+        for (int i = 0; i <= vSides[0]; i++) {
+            // Angle between each side in radians
+            float ang = PI * 2.0 / vSides[0] * i;
+    
+            // Offset from center of point (0.3 to accomodate for aspect ratio)
+            vec4 offset = vec4(cos(ang) * 0.3, -sin(ang) * 0.4, 0.0, 0.0);
+            gl_Position = gl_in[0].gl_Position + offset;
 
-                EmitVertex();
+            EmitVertex();
 
-                gl_Position = gl_in[j].gl_Position;
+            gl_Position = gl_in[0].gl_Position;
 
-                EmitVertex();
-            }
-        
-            EndPrimitive();
+            EmitVertex();
         }
+    
+        EndPrimitive();
     }
 )glsl";
 
@@ -107,7 +105,7 @@ int main(int argc, char *argv[]) {
         -0.45f,  0.45f, 1.0f, 0.0f, 0.0f, 4.0f, // Red point
          0.45f,  0.45f, 0.0f, 1.0f, 0.0f, 8.0f, // Green point
          0.45f, -0.45f, 0.0f, 0.0f, 1.0f, 32.0f, // Blue point
-        -0.45f, -0.45f, 1.0f, 1.0f, 0.0f, 6.0f // Yellow point
+        -0.45f, -0.45f, 1.0f, 1.0f, 0.0f, 16.0f // Yellow point
     };
 
     GLuint vao;
@@ -147,7 +145,7 @@ int main(int argc, char *argv[]) {
 
     GLint sidesAttrib = glGetAttribLocation(shaderProgram, "sides");
     glEnableVertexAttribArray(sidesAttrib);
-    glVertexAttribPointer(sidesAttrib, 1, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*) (5 * sizeof(GLfloat)));
+    glVertexAttribPointer(sidesAttrib, 1, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*) (5 * sizeof(float)));
 
     /*GLint texoneAttrib = glGetAttribLocation(shaderProgram, "texcoordone");
     glEnableVertexAttribArray(texoneAttrib);
@@ -279,7 +277,7 @@ int main(int argc, char *argv[]) {
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        glDrawArrays(GL_LINES, 0, 4);
+        glDrawArrays(GL_POINTS, 0, 4);
 
         SDL_GL_SwapWindow(window);
     }
