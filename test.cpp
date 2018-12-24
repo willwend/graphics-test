@@ -10,48 +10,86 @@
 
 const GLchar* vertexSource = R"glsl(
     #version 150 core
-
-    in vec3 position;
+    in vec2 position;
     in vec3 color;
-    //in vec2 texcoordone;
-    in vec2 texcoordtwo;
+    in float sides;
 
-    out vec3 Color;
-    //out vec2 Texcoordone;
-    out vec2 Texcoordtwo;
-
-    uniform mat4 model;
-    uniform mat4 view;
-    uniform mat4 proj;
-    uniform vec3 overrideColor;
+    out vec3 vColor;
+    out float vSides;
 
     void main()
     {
-        Color = overrideColor * color;
-        //Texcoordone = texcoordone;
-        Texcoordtwo = texcoordtwo;
-        gl_Position = proj * view * model * vec4(position, 1.0);
+        vSides = sides;
+        vColor = color;
+        gl_Position = vec4(position, 0.0, 1.0);
+    }
+)glsl";
+
+const GLchar* geometrySource = R"glsl(
+    #version 150 core
+    
+    layout(lines) in;
+    layout(triangle_strip, max_vertices = 128) out;
+
+    in vec3 vColor[];
+    in float vSides[];
+    out vec3 fColor;
+
+    const float PI = 3.1415926;
+    
+    void main()
+    {
+        for (int j = 0; j < 2; j++) {
+            fColor = vColor[j];
+
+            for (int i = 0; i <= vSides[j]; i++) {
+                // Angle between each side in radians
+                float ang = PI * 2.0 / vSides[j] * i;
+        
+                // Offset from center of point (0.3 to accomodate for aspect ratio)
+                vec4 offset = vec4(cos(ang) * 0.3, -sin(ang) * 0.4, 0.0, 0.0);
+                gl_Position = gl_in[j].gl_Position + offset;
+
+                EmitVertex();
+
+                gl_Position = gl_in[j].gl_Position;
+
+                EmitVertex();
+            }
+        
+            EndPrimitive();
+        }
     }
 )glsl";
 
 const GLchar* fragmentSource = R"glsl(
     #version 150 core
-    
-    in vec3 Color;
-    in vec2 Texcoordone;
-    in vec2 Texcoordtwo;
-    
+    in vec3 fColor;
     out vec4 outColor;
-    
-    uniform sampler2D texOne;
-    uniform sampler2D texTwo;
-    
+
     void main()
     {
-        //outColor = mix(texture(texOne, Texcoordone), texture(texTwo, Texcoordtwo), 0.5) * vec4(Color, 1.0);
-        outColor = texture(texTwo, Texcoordtwo) * vec4(Color, 1.0);
+        outColor = vec4(fColor, 1.0);
     }
 )glsl";
+
+GLuint makeShader(GLenum type, const GLchar* source) {
+    GLuint id = glCreateShader(type);
+    glShaderSource(id, 1, &source, NULL);
+    glCompileShader(id);
+    GLint status;
+
+    glGetShaderiv(id, GL_COMPILE_STATUS, &status);
+    if (status == GL_TRUE) {
+        printf("Shader compiled successfully.\n");
+    }
+    else {
+        char buffer[512];
+        glGetShaderInfoLog(id, 512, NULL, buffer);
+        printf("Shader failed to compile:\n%s", buffer);
+    }
+    return id;
+}
 
 int main(int argc, char *argv[]) {
     SDL_Init(SDL_INIT_VIDEO);
@@ -65,62 +103,12 @@ int main(int argc, char *argv[]) {
     glewInit();
     SDL_Event windowEvent;
 
-    GLfloat vertices[] = {
-    //  Position            Color             Texcoords
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-
-        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-
-        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-
-        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-
-        -1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, // floor
-         1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-         1.0f,  1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
-         1.0f,  1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
-        -1.0f,  1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-        -1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f
+    float vertices[] = {
+        -0.45f,  0.45f, 1.0f, 0.0f, 0.0f, 4.0f, // Red point
+         0.45f,  0.45f, 0.0f, 1.0f, 0.0f, 8.0f, // Green point
+         0.45f, -0.45f, 0.0f, 0.0f, 1.0f, 32.0f, // Blue point
+        -0.45f, -0.45f, 1.0f, 1.0f, 0.0f, 6.0f // Yellow point
     };
-
-    /*GLuint elements[] = {
-        0, 1, 2,
-        2, 3, 0
-    };*/
 
     GLuint vao;
     glGenVertexArrays(1, &vao);
@@ -136,62 +124,42 @@ int main(int argc, char *argv[]) {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(elements), elements, GL_STATIC_DRAW);*/
 
-    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertexSource, NULL);
-    glCompileShader(vertexShader);
-    GLint status;
-
-    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &status);
-    if (status == GL_TRUE) {
-        printf("Vertex shader compiled successfully.\n");
-    }
-    else {
-        char buffer[512];
-        glGetShaderInfoLog(vertexShader, 512, NULL, buffer);
-        printf("Vertex shader failed to compile:\n%s", buffer);
-    }
-
-    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
-    glCompileShader(fragmentShader);
-
-    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &status);
-    if (status == GL_TRUE) {
-        printf("Fragment shader compiled successfully.\n");
-    }
-    else {
-        char buffer[512];
-        glGetShaderInfoLog(fragmentShader, 512, NULL, buffer);
-        printf("Fragment shader failed to compile:\n%s", buffer);
-    }
+    GLuint vertexShader = makeShader(GL_VERTEX_SHADER, vertexSource);
+    GLuint fragmentShader = makeShader(GL_FRAGMENT_SHADER, fragmentSource);
+    GLuint geometryShader = makeShader(GL_GEOMETRY_SHADER, geometrySource);
 
     GLuint shaderProgram = glCreateProgram(); // combine into program
     glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, geometryShader);
     glAttachShader(shaderProgram, fragmentShader);
-    glBindFragDataLocation(shaderProgram, 0, "outColor"); // which buffer - "glDrawBuffers"
+    //glBindFragDataLocation(shaderProgram, 0, "outColor"); // which buffer - "glDrawBuffers"
     glLinkProgram(shaderProgram);
     glUseProgram(shaderProgram);
 
     // Specify the layout of the vertex data
     GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
     glEnableVertexAttribArray(posAttrib);
-    glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), 0);
+    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), 0);
 
     GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
     glEnableVertexAttribArray(colAttrib);
-    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
+
+    GLint sidesAttrib = glGetAttribLocation(shaderProgram, "sides");
+    glEnableVertexAttribArray(sidesAttrib);
+    glVertexAttribPointer(sidesAttrib, 1, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*) (5 * sizeof(GLfloat)));
 
     /*GLint texoneAttrib = glGetAttribLocation(shaderProgram, "texcoordone");
     glEnableVertexAttribArray(texoneAttrib);
     glVertexAttribPointer(texoneAttrib, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));*/
 
-    GLint textwoAttrib = glGetAttribLocation(shaderProgram, "texcoordtwo");
+    /*GLint textwoAttrib = glGetAttribLocation(shaderProgram, "texcoordtwo");
     glEnableVertexAttribArray(textwoAttrib);
     glVertexAttribPointer(textwoAttrib, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
 
     // Load texture
     GLuint textures[2];
-    glGenTextures(2, textures);
+    glGenTextures(2, textures);*/
 
     /*glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, textures[0]);
@@ -205,7 +173,7 @@ int main(int argc, char *argv[]) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);*/
 
-    float pixels[] = {
+    /*float pixels[] = {
         0.8f, 0.0f, 0.0f,   0.9f, 0.9f, 0.0f,
         0.0f, 0.6f, 0.9f,   0.0f, 0.8f, 0.0f
     };
@@ -217,14 +185,14 @@ int main(int argc, char *argv[]) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);*/
 
     /*glm::mat4 model = glm::mat4(1.0f);
     model = glm::rotate(model, glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));*/
-    GLint uniModel = glGetUniformLocation(shaderProgram, "model");
+    //GLint uniModel = glGetUniformLocation(shaderProgram, "model");
     //glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
 
-    glm::mat4 view = glm::lookAt(
+    /*glm::mat4 view = glm::lookAt(
         glm::vec3(2.0f, 3.0f, 5.0f),
         glm::vec3(0.0f, 0.0f, 0.0f),
         glm::vec3(0.0f, 0.0f, 1.0f)
@@ -241,18 +209,18 @@ int main(int argc, char *argv[]) {
     auto t_start = std::chrono::high_resolution_clock::now();
     glEnable(GL_DEPTH_TEST);
     GLint uniColor = glGetUniformLocation(shaderProgram, "overrideColor");
-    glm::mat4 model, old = glm::mat4(1.0f);
+    glm::mat4 model, old = glm::mat4(1.0f);*/
 
     while (true) {
         if (SDL_PollEvent(&windowEvent)) {
             if (windowEvent.type == SDL_QUIT) break;
             if (windowEvent.type == SDL_KEYUP) {
                 if (windowEvent.key.keysym.sym == SDLK_ESCAPE) break;
-                if (windowEvent.key.keysym.sym == SDLK_SPACE) flip = !flip;
+                //if (windowEvent.key.keysym.sym == SDLK_SPACE) flip = !flip;
             }
         }
 
-        glClearColor(0.5f, 0.5f, 0.5f, 1.0f); // Clear the screen to black
+        /*glClearColor(0.5f, 0.5f, 0.5f, 1.0f); // Clear the screen to black
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUniform3f(uniColor, 1.0f, 1.0f, 1.0f); // Start with no darkening
 
@@ -307,7 +275,11 @@ int main(int argc, char *argv[]) {
 
         glDisable(GL_STENCIL_TEST); // STENCIL END
 
-        //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // Draw rectangle
+        //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // Draw rectangle*/
+
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glDrawArrays(GL_LINES, 0, 4);
 
         SDL_GL_SwapWindow(window);
     }
