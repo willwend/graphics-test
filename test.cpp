@@ -7,67 +7,37 @@
 #include "GLM/glm/gtc/matrix_transform.hpp"
 #include "GLM/glm/gtc/type_ptr.hpp"
 #include <chrono>
+#include <vector>
+#include <cmath>
 
 const GLchar* vertexSource = R"glsl(
     #version 150 core
-    in vec2 position;
-    in vec3 color;
-    in float sides;
+    in vec3 position;
+    in vec2 texcoord;
 
-    out vec3 vColor;
-    out float vSides;
+    out vec2 Texcoord;
+
+    uniform mat4 model;
+    uniform mat4 view;
+    uniform mat4 proj;
 
     void main()
     {
-        vSides = sides;
-        vColor = color;
-        gl_Position = vec4(position, 0.0, 1.0);
-    }
-)glsl";
-
-const GLchar* geometrySource = R"glsl(
-    #version 150 core
-    
-    layout(points) in;
-    layout(triangle_strip, max_vertices = 66) out;
-
-    in vec3 vColor[];
-    in float vSides[];
-    out vec3 fColor;
-
-    const float PI = 3.1415926;
-    
-    void main()
-    {
-        fColor = vColor[0];
-
-        for (int i = 0; i <= vSides[0]; i++) {
-            // Angle between each side in radians
-            float ang = PI * 2.0 / vSides[0] * i;
-    
-            // Offset from center of point (0.3 to accomodate for aspect ratio)
-            vec4 offset = vec4(cos(ang) * 0.3, -sin(ang) * 0.4, 0.0, 0.0);
-            gl_Position = gl_in[0].gl_Position + offset;
-
-            EmitVertex();
-
-            gl_Position = gl_in[0].gl_Position;
-
-            EmitVertex();
-        }
-    
-        EndPrimitive();
+        Texcoord = texcoord;
+        gl_Position = proj * view * model * vec4(position, 1.0);
     }
 )glsl";
 
 const GLchar* fragmentSource = R"glsl(
     #version 150 core
-    in vec3 fColor;
+    in vec2 Texcoord;
     out vec4 outColor;
+
+    uniform sampler2D currTexture;
 
     void main()
     {
-        outColor = vec4(fColor, 1.0);
+        outColor = texture(currTexture, Texcoord);
     }
 )glsl";
 
@@ -89,6 +59,49 @@ GLuint makeShader(GLenum type, const GLchar* source) {
     return id;
 }
 
+void makeTexture(const char* filename, const char* shadername, GLenum id, size_t i, GLuint *textures, GLuint shaderProgram) {
+    glActiveTexture(id);
+    glBindTexture(GL_TEXTURE_2D, textures[i]);
+    int width, height;
+    unsigned char* image = SOIL_load_image(filename, &width, &height, 0, SOIL_LOAD_RGB);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+    SOIL_free_image_data(image);
+    glUniform1i(glGetUniformLocation(shaderProgram, shadername), (int) i);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+}
+
+void addVertices(float d, float u, float v, std::vector<float> &vertices, float pi) {
+    printf("pushing:%f,%f,%f,%f,%f\n", d * cos(u)*sin(v), d * sin(u)*sin(v), d * cos(v), u / (2 * pi), v / pi);
+    vertices.push_back(d * cos(u)*sin(v)); // x
+    vertices.push_back(d * sin(u)*sin(v)); // y
+    vertices.push_back(d * cos(v)); // z
+    vertices.push_back(u / (2 * pi)); // tex x
+    vertices.push_back(v / pi); // tex y
+}
+
+std::vector<float> makeGlobe(float d, int res) {
+    std::vector<float> vertices;
+    float pi = 3.1415926;
+    float safe = 0.00001;
+    vertices.reserve(6 * 5 * 2 * res * res);
+    for (float u = 0.0; u < (2 * pi) - safe; u += pi / res) {
+        printf("u = %f\n", u);
+        for (float v = 0.0; v < pi - safe; v += pi / res) {
+            printf("v = %f\n", v);
+            addVertices(d, u, v, vertices, pi);
+            addVertices(d, u + pi / res, v, vertices, pi);
+            addVertices(d, u, v + pi / res, vertices, pi);
+            addVertices(d, u + pi / res, v, vertices, pi);
+            addVertices(d, u, v + pi / res, vertices, pi);
+            addVertices(d, u + pi / res, v + pi / res, vertices, pi);
+        }
+    }
+    return vertices;
+}
+
 int main(int argc, char *argv[]) {
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -101,183 +114,122 @@ int main(int argc, char *argv[]) {
     glewInit();
     SDL_Event windowEvent;
 
-    float vertices[] = {
-        -0.45f,  0.45f, 1.0f, 0.0f, 0.0f, 4.0f, // Red point
-         0.45f,  0.45f, 0.0f, 1.0f, 0.0f, 8.0f, // Green point
-         0.45f, -0.45f, 0.0f, 0.0f, 1.0f, 32.0f, // Blue point
-        -0.45f, -0.45f, 1.0f, 1.0f, 0.0f, 16.0f // Yellow point
-    };
+    GLuint eartha;
+    glGenVertexArrays(1, &eartha);
+    glBindVertexArray(eartha);
+    GLuint moona;
+    glGenVertexArrays(1, &moona);
+    glBindVertexArray(moona);
 
-    GLuint vao;
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
+    GLuint earthb;
+    glGenBuffers(1, &earthb);
+    std::vector<float> earthbuf = makeGlobe(4, 2);
+    GLuint moonb;
+    glGenBuffers(1, &moonb);
+    std::vector<float> moonbuf = makeGlobe(1, 2);
 
-    GLuint vbo;
-    glGenBuffers(1, &vbo); // Generate 1 buffer
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    /*GLuint ebo;
-    glGenBuffers(1, &ebo); // Create an element array
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(elements), elements, GL_STATIC_DRAW);*/
+    glBindBuffer(GL_ARRAY_BUFFER, earthb);
+    glBufferData(GL_ARRAY_BUFFER, earthbuf.size(), &earthbuf[0], GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, moonb);
+    glBufferData(GL_ARRAY_BUFFER, moonbuf.size(), &moonbuf[0], GL_STATIC_DRAW);
 
     GLuint vertexShader = makeShader(GL_VERTEX_SHADER, vertexSource);
     GLuint fragmentShader = makeShader(GL_FRAGMENT_SHADER, fragmentSource);
-    GLuint geometryShader = makeShader(GL_GEOMETRY_SHADER, geometrySource);
 
-    GLuint shaderProgram = glCreateProgram(); // combine into program
+    GLuint shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, geometryShader);
     glAttachShader(shaderProgram, fragmentShader);
-    //glBindFragDataLocation(shaderProgram, 0, "outColor"); // which buffer - "glDrawBuffers"
+    glBindFragDataLocation(shaderProgram, 0, "outColor"); // which buffer - "glDrawBuffers"
     glLinkProgram(shaderProgram);
     glUseProgram(shaderProgram);
 
-    // Specify the layout of the vertex data
+    glBindVertexArray(eartha);
+    glBindBuffer(GL_ARRAY_BUFFER, earthb);
+    glEnableVertexAttribArray(0);
     GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
-    glEnableVertexAttribArray(posAttrib);
-    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), 0);
+    glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
+    glEnableVertexAttribArray(1);
+    GLint texAttrib = glGetAttribLocation(shaderProgram, "texcoord");
+    glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (char*)(3 * sizeof(float)));
 
-    GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
-    glEnableVertexAttribArray(colAttrib);
-    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
+    glBindVertexArray(moona);
+    glBindBuffer(GL_ARRAY_BUFFER, moonb);
+    glEnableVertexAttribArray(0);
+    posAttrib = glGetAttribLocation(shaderProgram, "position");
+    glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
+    glEnableVertexAttribArray(1);
+    texAttrib = glGetAttribLocation(shaderProgram, "texcoord");
+    glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (char*)(3 * sizeof(float)));
 
-    GLint sidesAttrib = glGetAttribLocation(shaderProgram, "sides");
-    glEnableVertexAttribArray(sidesAttrib);
-    glVertexAttribPointer(sidesAttrib, 1, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*) (5 * sizeof(float)));
-
-    /*GLint texoneAttrib = glGetAttribLocation(shaderProgram, "texcoordone");
-    glEnableVertexAttribArray(texoneAttrib);
-    glVertexAttribPointer(texoneAttrib, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));*/
-
-    /*GLint textwoAttrib = glGetAttribLocation(shaderProgram, "texcoordtwo");
-    glEnableVertexAttribArray(textwoAttrib);
-    glVertexAttribPointer(textwoAttrib, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
-
-    // Load texture
     GLuint textures[2];
-    glGenTextures(2, textures);*/
+    glGenTextures(2, textures);
+    makeTexture("earth.jpg", "texEarth", GL_TEXTURE0, 0, textures, shaderProgram);
+    makeTexture("moon.jpg", "texMoon", GL_TEXTURE1, 1, textures, shaderProgram);
 
-    /*glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, textures[0]);
-    int width, height;
-    unsigned char* image = SOIL_load_image("SOIL/img_test.png", &width, &height, 0, SOIL_LOAD_RGB);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
-    SOIL_free_image_data(image);
-    glUniform1i(glGetUniformLocation(shaderProgram, "texOne"), 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);*/
+    GLint uniModel = glGetUniformLocation(shaderProgram, "model");
+    glm::mat4 earthmodel = glm::mat4(1.0f);
+    glm::mat4 moonmodel = glm::mat4(1.0f);
+    moonmodel = glm::translate(
+        moonmodel,
+        glm::vec3(0.0f, 36.0f, 0.0f)
+    );
 
-    /*float pixels[] = {
-        0.8f, 0.0f, 0.0f,   0.9f, 0.9f, 0.0f,
-        0.0f, 0.6f, 0.9f,   0.0f, 0.8f, 0.0f
-    };
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, textures[1]);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
-    glUniform1i(glGetUniformLocation(shaderProgram, "texTwo"), 1);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);*/
-
-    /*glm::mat4 model = glm::mat4(1.0f);
-    model = glm::rotate(model, glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));*/
-    //GLint uniModel = glGetUniformLocation(shaderProgram, "model");
-    //glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-
-    /*glm::mat4 view = glm::lookAt(
-        glm::vec3(2.0f, 3.0f, 5.0f),
+    glm::mat4 view = glm::lookAt(
+        glm::vec3(-0.2f, 38.5f, 1.0f),
         glm::vec3(0.0f, 0.0f, 0.0f),
         glm::vec3(0.0f, 0.0f, 1.0f)
     );
     GLint uniView = glGetUniformLocation(shaderProgram, "view");
     glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
-    glm::mat4 proj = glm::perspective(glm::radians(40.0f), 800.0f / 600.0f, 1.0f, 30.0f);
+    glm::mat4 proj = glm::perspective(glm::radians(60.0f), 800.0f / 600.0f, 1.0f, 70.0f);
     GLint uniProj = glGetUniformLocation(shaderProgram, "proj");
     glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
 
-    float sint = 1.6f;
-    bool flip = false;
+    bool rotate = false;
     auto t_start = std::chrono::high_resolution_clock::now();
     glEnable(GL_DEPTH_TEST);
-    GLint uniColor = glGetUniformLocation(shaderProgram, "overrideColor");
-    glm::mat4 model, old = glm::mat4(1.0f);*/
 
     while (true) {
         if (SDL_PollEvent(&windowEvent)) {
             if (windowEvent.type == SDL_QUIT) break;
             if (windowEvent.type == SDL_KEYUP) {
                 if (windowEvent.key.keysym.sym == SDLK_ESCAPE) break;
-                //if (windowEvent.key.keysym.sym == SDLK_SPACE) flip = !flip;
+                if (windowEvent.key.keysym.sym == SDLK_SPACE) rotate = !rotate;
             }
         }
 
-        /*glClearColor(0.5f, 0.5f, 0.5f, 1.0f); // Clear the screen to black
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glUniform3f(uniColor, 1.0f, 1.0f, 1.0f); // Start with no darkening
-
         auto t_now = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration_cast<std::chrono::duration<float>>(t_now - t_start).count();
-        sint += time;
-        t_start = t_now;
-        float scaling = sin(sint) * time + 1.0f;
-
-        model = old;
-        if (flip) {
-            model = glm::rotate(
-                model,
-                glm::radians(time * 40.0f),
-                glm::vec3(1.0f, 0.0f, 0.0f)
-            );
-        }
-        model = glm::scale(
-            model,
-            glm::vec3(scaling, scaling, scaling)
-        );
-        glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-
-        glDrawArrays(GL_TRIANGLES, 0, 36); // Draw cube
-        old = model;
-        glEnable(GL_STENCIL_TEST); // STENCIL START
-        
-        // Draw floor
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);
-        glStencilOp(GL_ZERO, GL_ZERO, GL_REPLACE);
-        glStencilMask(0xFF);
-        glDepthMask(GL_FALSE);
-        //glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-        glClear(GL_STENCIL_BUFFER_BIT);
-
-        glDrawArrays(GL_TRIANGLES, 36, 6);
-
-        // Draw cube reflection
-        glStencilFunc(GL_EQUAL, 1, 0xFF);
-        glStencilMask(0x00);
-        glDepthMask(GL_TRUE);
-        //glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-
-        model = glm::scale(
-            glm::translate(model, glm::vec3(0, 0, -1)),
-            glm::vec3(1, 1, -1)
-        );
-        glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-
-        glUniform3f(uniColor, 0.3f, 0.3f, 0.3f); // Darken override
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-
-        glDisable(GL_STENCIL_TEST); // STENCIL END
-
-        //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0); // Draw rectangle*/
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        glDrawArrays(GL_POINTS, 0, 4);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        if (rotate && time > 0.02f) {
+            t_start = t_now;
+            earthmodel = glm::rotate(
+                earthmodel,
+                glm::radians(1.0f),
+                glm::vec3(0.0f, 0.0f, 1.0f)
+            );
+            moonmodel = glm::rotate(
+                moonmodel,
+                glm::radians(-4.0f),
+                glm::vec3(0.0f, 0.0f, 1.0f)
+            );
+        }
+
+        glActiveTexture(GL_TEXTURE0);
+        glUniform1i(glGetUniformLocation(shaderProgram, "currTexture"), 0);
+        glBindVertexArray(eartha);
+        glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(earthmodel));
+        glDrawArrays(GL_TRIANGLES, 0, earthbuf.size());
+
+        glActiveTexture(GL_TEXTURE1);
+        glUniform1i(glGetUniformLocation(shaderProgram, "currTexture"), 1);
+        glBindVertexArray(moona);
+        glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(moonmodel));
+        glDrawArrays(GL_TRIANGLES, 0, moonbuf.size());
 
         SDL_GL_SwapWindow(window);
     }
@@ -285,8 +237,10 @@ int main(int argc, char *argv[]) {
     glDeleteProgram(shaderProgram);
     glDeleteShader(fragmentShader);
     glDeleteShader(vertexShader);
-    glDeleteBuffers(1, &vbo);
-    glDeleteVertexArrays(1, &vao);
+    glDeleteBuffers(1, &moonb);
+    glDeleteBuffers(1, &earthb);
+    glDeleteVertexArrays(1, &moona);
+    glDeleteVertexArrays(1, &eartha);
 
     SDL_GL_DeleteContext(context);
     SDL_Quit();
