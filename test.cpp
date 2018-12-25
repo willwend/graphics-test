@@ -123,15 +123,15 @@ int main(int argc, char *argv[]) {
 
     GLuint earthb;
     glGenBuffers(1, &earthb);
-    std::vector<float> earthbuf = makeGlobe(4, 2);
+    std::vector<float> earthbuf = makeGlobe(4, 12);
     GLuint moonb;
     glGenBuffers(1, &moonb);
-    std::vector<float> moonbuf = makeGlobe(1, 2);
+    std::vector<float> moonbuf = makeGlobe(1, 12);
 
     glBindBuffer(GL_ARRAY_BUFFER, earthb);
-    glBufferData(GL_ARRAY_BUFFER, earthbuf.size(), &earthbuf[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, earthbuf.size() * 4, &earthbuf[0], GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, moonb);
-    glBufferData(GL_ARRAY_BUFFER, moonbuf.size(), &moonbuf[0], GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, moonbuf.size() * 4, &moonbuf[0], GL_STATIC_DRAW);
 
     GLuint vertexShader = makeShader(GL_VERTEX_SHADER, vertexSource);
     GLuint fragmentShader = makeShader(GL_FRAGMENT_SHADER, fragmentSource);
