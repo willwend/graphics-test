@@ -52,7 +52,10 @@ const GLchar* fragmentSource = R"glsl(
 
     void main()
     {
-        outColor = texture(currTexture, Texcoord) * vec4(lightColor, 1.0);
+        float ambientStrength = 0.1;
+        vec3 ambient = ambientStrength * lightColor;
+        vec4 texture = texture(currTexture, Texcoord);
+        outColor = texture * vec4(ambient, 1.0);
     }
 )glsl";
 
