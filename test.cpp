@@ -55,6 +55,7 @@ const GLchar* fragmentSource = R"glsl(
     uniform sampler2D currTexture;
     uniform vec3 lightColor;
     uniform vec3 lightPos;
+    uniform vec3 viewPos;
 
     void main()
     {
@@ -67,7 +68,13 @@ const GLchar* fragmentSource = R"glsl(
         float diff = max(dot(norm, lightDir), 0.0);
         vec3 diffuse = diff * lightColor;
 
-        vec4 result = vec4(ambient + diffuse, 1.0);
+        float specularStrength = 1.0;
+        vec3 viewDir = normalize(viewPos - Normal);
+        vec3 reflectDir = reflect(-lightDir, norm);  
+        float spec = pow(max(dot(viewDir, reflectDir), 0.0), 8);
+        vec3 specular = specularStrength * spec * lightColor;
+
+        vec4 result = vec4(ambient + diffuse + specular, 1.0);
         outColor = texture * result;
     }
 )glsl";
@@ -233,6 +240,7 @@ int main(int argc, char *argv[]) {
 
     glm::vec3 lightColor(0.95f, 1.0f, 0.81f);
     glm::vec3 lightPos(20.0f, 800.0f, 1.0f);
+    glm::vec3 viewPos(50.0f, 50.1f, 7.4f);
 
     glm::mat4 earthmodel = glm::mat4(1.0f);
     glm::mat4 moonmodel = glm::mat4(1.0f);
@@ -249,7 +257,7 @@ int main(int argc, char *argv[]) {
     );
 
     glm::mat4 view = glm::lookAt(
-        glm::vec3(50.0f, 50.1f, 7.4f),
+        viewPos,
         glm::vec3(0.0f, 0.0f, 1.0f),
         glm::vec3(0.0f, 0.0f, 1.0f)
     );
@@ -267,6 +275,8 @@ int main(int argc, char *argv[]) {
     glUniform3fv(uniLight, 1, glm::value_ptr(lightColor));
     GLint uniPos = glGetUniformLocation(shaderProgram, "lightPos");
     glUniform3fv(uniPos, 1, glm::value_ptr(lightPos));
+    GLint uniVos = glGetUniformLocation(shaderProgram, "viewPos");
+    glUniform3fv(uniVos, 1, glm::value_ptr(viewPos));
 
     while (true) {
         if (SDL_PollEvent(&windowEvent)) {
