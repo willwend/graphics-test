@@ -240,7 +240,7 @@ int main(int argc, char *argv[]) {
 
     glm::vec3 lightColor(0.95f, 1.0f, 0.81f);
     glm::vec3 lightPos(20.0f, 800.0f, 1.0f);
-    glm::vec3 viewPos(50.0f, 50.1f, 7.4f);
+    glm::vec3 viewPos(50.0f, 50.1f, 1.4f);
 
     glm::mat4 earthmodel = glm::mat4(1.0f);
     glm::mat4 moonmodel = glm::mat4(1.0f);
@@ -258,7 +258,7 @@ int main(int argc, char *argv[]) {
 
     glm::mat4 view = glm::lookAt(
         viewPos,
-        glm::vec3(0.0f, 0.0f, 1.0f),
+        glm::vec3(0.0f, 0.0f, 0.0f),
         glm::vec3(0.0f, 0.0f, 1.0f)
     );
 
@@ -343,8 +343,11 @@ int main(int argc, char *argv[]) {
     }
 
     glDeleteProgram(shaderProgram);
+    glDeleteProgram(sunProgram);
     glDeleteShader(fragmentShader);
     glDeleteShader(vertexShader);
+    glDeleteShader(sunFShader);
+    glDeleteShader(sunVShader);
     glDeleteBuffers(1, &sunb);
     glDeleteBuffers(1, &moonb);
     glDeleteBuffers(1, &earthb);
