@@ -30,13 +30,13 @@ const GLchar* fragmentSource = R"glsl(
         float y = 2 * Position.y;
         float r = 0;
         float i = 0;
-        for (int j = 0; j < 20; j++) {
+        for (int j = 0; j < 30; j++) {
             float newx = r*r - i*i + x;
             float newy = 2*r*i + y;
             r = newx;
             i = newy;
             if (r > 2.0 || r < -2.0 || i > 2.0 || i < -2.0) {
-                outColor = vec4(1.0, 1.0, 1.0, 1.0);
+                outColor = vec4(1.0 - j / 40.0, 1.0 - j / 40.0, 1.0 - j / 40.0, 1.0);
                 return;
             }
         }
